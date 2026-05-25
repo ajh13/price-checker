@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Price Checker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.4rem; font-weight: 500; }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.8rem;
+      resize: vertical;
+      font-family: inherit;
+    }
+    textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: #6366f1;
+    }
+
+    .row { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; align-items: flex-end; }
+    .row > div { flex: 1; min-width: 200px; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; }
+    .checkbox-row input { width: 16px; height: 16px; accent-color: #6366f1; cursor: pointer; }
+    .checkbox-row label { margin: 0; cursor: pointer; color: #94a3b8; }
+
+    button {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1.5rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 1rem;
+    }
+    button:hover:not(:disabled) { background: #4f46e5; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #status { font-size: 0.85rem; color: #64748b; margin-top: 0.75rem; min-height: 1.2em; }
+
+    .error-banner {
+      background: #2d1a1a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .item-result { margin-bottom: 1.5rem; }
+
+    .item-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .item-title { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; }
+
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      white-space: nowrap;
+    }
+    .badge-source { background: #1e3a5f; color: #7dd3fc; }
+    .badge-cached { background: #1c3327; color: #6ee7b7; }
+    .badge-error  { background: #2d1a1a; color: #fca5a5; }
+
+    .copy-btn {
+      margin-top: 0;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.78rem;
+      background: #2d3148;
+      margin-left: auto;
+    }
+    .copy-btn:hover:not(:disabled) { background: #3d4168; }
+
+    .item-error {
+      color: #fca5a5;
+      font-size: 0.88rem;
+      background: #2d1a1a;
+      border-radius: 8px;
+      padding: 0.6rem 0.9rem;
+    }
+
+    .conditions-grid { display: flex; flex-direction: column; gap: 0.6rem; }
+
+    .condition-card {
+      border-radius: 8px;
+      border: 1px solid;
+      padding: 0.75rem 1rem;
+    }
+    .condition-card.graded  { background: #1c1a0e; border-color: #713f12; }
+    .condition-card.sealed  { background: #0f1c13; border-color: #14532d; }
+    .condition-card.cib     { background: #0d1529; border-color: #1e3a5f; }
+    .condition-card.boxdisc { background: #1a1229; border-color: #3b1f5e; }
+    .condition-card.loose   { background: #171717; border-color: #292929; }
+
+    .condition-name {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    .condition-card.graded  .condition-name { color: #fbbf24; }
+    .condition-card.sealed  .condition-name { color: #4ade80; }
+    .condition-card.cib     .condition-name { color: #60a5fa; }
+    .condition-card.boxdisc .condition-name { color: #c084fc; }
+    .condition-card.loose   .condition-name { color: #94a3b8; }
+
+    .stats-row { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: baseline; }
+
+    .stat { display: flex; flex-direction: column; }
+    .stat-label { font-size: 0.7rem; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; }
+    .stat-value.avg { font-size: 1.35rem; }
+
+    .count-note { font-size: 0.75rem; color: #475569; margin-top: 0.4rem; }
+
+    /* Low-data fallback table */
+    .recent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-top: 0.25rem;
+    }
+    .recent-table th {
+      text-align: left;
+      color: #475569;
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #2d3148;
+    }
+    .recent-table td {
+      padding: 0.3rem 0;
+      border-bottom: 1px solid #1e2130;
+      color: #cbd5e1;
+      vertical-align: top;
+    }
+    .recent-table td:last-child { text-align: right; white-space: nowrap; padding-left: 0.5rem; }
+    .recent-table a { color: #818cf8; text-decoration: none; }
+    .recent-table a:hover { text-decoration: underline; }
+    .low-data-note { font-size: 0.75rem; color: #64748b; margin-bottom: 0.4rem; font-style: italic; }
+
+    #results { margin-top: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Price Checker</h1>
+    <p class="subtitle">Video game resale prices from eBay sold listings</p>
+
+    <div class="card">
+      <label for="items">Items to look up <span style="color:#475569">(one per line)</span></label>
+      <textarea id="items" rows="5" placeholder="Super Mario 64 N64&#10;Legend of Zelda SNES&#10;Nintendo 64 Console"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="excluded">Excluded keywords <span style="color:#475569">(comma-separated)</span></label>
+          <input type="text" id="excluded" value="lot, bundle, repair, broken, parts, for parts" />
+        </div>
+        <div>
+          <label for="category">eBay Category ID <span style="color:#475569">(optional)</span></label>
+          <input type="text" id="category" placeholder="e.g. 139973" />
+        </div>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="outliers" checked />
+        <label for="outliers">Remove outliers</label>
+      </div>
+
+      <button id="submit-btn" onclick="checkPrices()">Check Prices</button>
+      <div id="status"></div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <script>
+    const CONDITION_CLASS = {
+      'Sealed + Graded': 'graded',
+      'Sealed': 'sealed',
+      'CIB': 'cib',
+      'Box + Disc': 'boxdisc',
+      'Loose': 'loose',
+    };
+
+    function fmt(val) {
+      if (val == null) return '—';
+      return '$' + val.toFixed(2);
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderCondition(c) {
+      const cls = CONDITION_CLASS[c.condition] || 'loose';
+      let body = '';
+
+      if (c.recent_sales && c.recent_sales.length > 0) {
+        body += `<p class="low-data-note">Fewer than ${c.count < 1 ? 1 : c.count + 1} sales — showing most recent</p>`;
+        body += '<table class="recent-table"><thead><tr><th>Title</th><th>Date</th><th>Price</th></tr></thead><tbody>';
+        for (const s of c.recent_sales) {
+          const title = s.url
+            ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(s.title.slice(0, 60))}${s.title.length > 60 ? '…' : ''}</a>`
+            : escHtml(s.title.slice(0, 60)) + (s.title.length > 60 ? '…' : '');
+          body += `<tr><td>${title}</td><td>${s.sale_date}</td><td>${fmt(s.price)}</td></tr>`;
+        }
+        body += '</tbody></table>';
+      } else {
+        body += `<div class="stats-row">
+          <div class="stat"><span class="stat-label">Avg</span><span class="stat-value avg">${fmt(c.average_price)}</span></div>
+          <div class="stat"><span class="stat-label">Median</span><span class="stat-value">${fmt(c.median_price)}</span></div>
+          <div class="stat"><span class="stat-label">Low</span><span class="stat-value">${fmt(c.min_price)}</span></div>
+          <div class="stat"><span class="stat-label">High</span><span class="stat-value">${fmt(c.max_price)}</span></div>
+        </div>
+        <div class="count-note">${c.count} sold listing${c.count !== 1 ? 's' : ''}</div>`;
+      }
+
+      return `<div class="condition-card ${cls}">
+        <div class="condition-name">${escHtml(c.condition)}</div>
+        ${body}
+      </div>`;
+    }
+
+    function itemToText(item) {
+      const lines = [`=== ${item.query} ===`];
+      if (item.error) {
+        lines.push(`Error: ${item.error}`);
+      } else {
+        for (const c of item.conditions) {
+          if (c.average_price != null) {
+            lines.push(`${c.condition}: avg $${c.average_price.toFixed(2)}, median $${c.median_price.toFixed(2)} (${c.count} sales)`);
+          } else if (c.recent_sales) {
+            const prices = c.recent_sales.map(s => `$${s.price.toFixed(2)}`).join(', ');
+            lines.push(`${c.condition}: ${prices} (${c.count} recent sale${c.count !== 1 ? 's' : ''})`);
+          }
+        }
+      }
+      return lines.join('\n');
+    }
+
+    function renderItem(item) {
+      const badges = [];
+      badges.push(`<span class="badge badge-source">${escHtml(item.source)} · ${item.total_results_fetched} results</span>`);
+      if (item.cached) {
+        const ts = item.cached_at ? new Date(item.cached_at).toLocaleString() : '';
+        badges.push(`<span class="badge badge-cached">cached ${ts}</span>`);
+      }
+      if (item.error) {
+        badges.push(`<span class="badge badge-error">error</span>`);
+      }
+
+      const copyId = 'copy-' + Math.random().toString(36).slice(2);
+
+      let conditionsHtml = '';
+      if (item.error) {
+        conditionsHtml = `<div class="item-error">${escHtml(item.error)}</div>`;
+      } else if (item.conditions.length === 0) {
+        conditionsHtml = `<div class="item-error">No sales data found for this item.</div>`;
+      } else {
+        conditionsHtml = `<div class="conditions-grid">${item.conditions.map(renderCondition).join('')}</div>`;
+      }
+
+      return `<div class="item-result card">
+        <div class="item-header">
+          <span class="item-title">${escHtml(item.query)}</span>
+          ${badges.join('')}
+          <button class="copy-btn" id="${copyId}" onclick="copyItem(this, ${JSON.stringify(itemToText(item))})">Copy</button>
+        </div>
+        ${conditionsHtml}
+      </div>`;
+    }
+
+    function copyItem(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
+    async function checkPrices() {
+      const itemsRaw = document.getElementById('items').value;
+      const lines = itemsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+      if (lines.length === 0) return;
+
+      const excludedRaw = document.getElementById('excluded').value;
+      const excluded = excludedRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const removeOutliers = document.getElementById('outliers').checked;
+      const categoryId = document.getElementById('category').value.trim() || null;
+
+      const btn = document.getElementById('submit-btn');
+      const status = document.getElementById('status');
+      const results = document.getElementById('results');
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Fetching…';
+      status.textContent = `Looking up ${lines.length} item${lines.length !== 1 ? 's' : ''}…`;
+      results.innerHTML = '';
+
+      try {
+        const resp = await fetch('/api/prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: lines,
+            excluded_keywords: excluded,
+            remove_outliers: removeOutliers,
+            category_id: categoryId,
+          }),
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          results.innerHTML = `<div class="error-banner">Server error ${resp.status}: ${escHtml(text)}</div>`;
+          return;
+        }
+
+        const data = await resp.json();
+        results.innerHTML = data.results.map(renderItem).join('');
+        status.textContent = `Done — ${data.results.length} result${data.results.length !== 1 ? 's' : ''} · ${new Date(data.requested_at).toLocaleTimeString()}`;
+      } catch (err) {
+        results.innerHTML = `<div class="error-banner">Network error: ${escHtml(err.message)}</div>`;
+        status.textContent = '';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Check Prices';
+      }
+    }
+
+    // Submit on Ctrl+Enter / Cmd+Enter in the textarea
+    document.getElementById('items').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) checkPrices();
+    });
+  </script>
+</body>
+</html>
