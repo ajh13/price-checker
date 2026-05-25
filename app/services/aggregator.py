@@ -11,11 +11,11 @@ _RECENT_SALES_LIMIT = 5
 def _filter_outliers(prices: list[float], reference: float | None = None) -> list[float]:
     """Two-pass outlier removal.
 
-    Pass 1 — median cap: drop anything above 10x the reference price. When a
-    trusted reference is provided (the API's own reported average_price), use
-    that instead of computing the median from possibly-corrupted individual
-    prices. This fixes cases where the API returns correct aggregate stats but
-    corrupted per-product prices (all in the millions).
+    Pass 1 — median cap: drop anything above 10x the median. When a reference
+    price is provided AND the computed median is wildly above it (100x+), we
+    treat all individual prices as corrupted and use the reference for the cap
+    instead — this catches cases where the API returns correct top-level stats
+    but completely wrong per-product prices.
 
     Pass 2 — IQR: drop anything outside Q1-3*IQR .. Q3+3*IQR. Handles
     subtler outliers once the extreme values are already gone.
@@ -23,11 +23,16 @@ def _filter_outliers(prices: list[float], reference: float | None = None) -> lis
     if len(prices) < 2:
         return prices
 
-    # Pass 1: cap using trusted reference if available, else compute median
-    if reference and reference > 0:
+    # Pass 1: median cap
+    med = statistics.median(prices)
+    # If ALL prices appear corrupted (median is 100x+ the API's own average),
+    # use the API's average as the reference so the cap catches the corruption.
+    # Do NOT use the API average in normal cases — it's an overall average across
+    # all conditions and would produce a wrong cap for per-condition filtering.
+    if reference and reference > 0 and med > 100 * reference:
         cap_base = reference
     else:
-        cap_base = statistics.median(prices)
+        cap_base = med
 
     if cap_base > 0:
         prices = [p for p in prices if p <= 10 * cap_base]
