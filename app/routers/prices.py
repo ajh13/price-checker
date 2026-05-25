@@ -66,11 +66,12 @@ async def _fetch_item(
         total_results_fetched=len(listings),
     )
 
-    # Store to cache
-    cache.set(cache_key, {
-        "result": result.model_dump(mode="json"),
-        "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
-    })
+    # Only cache successful results with actual data
+    if result.error is None and result.total_results_fetched > 0:
+        cache.set(cache_key, {
+            "result": result.model_dump(mode="json"),
+            "fetched_at": datetime.now(tz=timezone.utc).isoformat(),
+        })
 
     return result
 
