@@ -6,19 +6,43 @@ from app.services.classifier import CONDITION_ORDER, classify_condition
 
 # Max individual sales shown in the low-data fallback
 _RECENT_SALES_LIMIT = 5
-# Outlier filter: drop listings beyond this many std deviations from the mean
-_OUTLIER_STD_MULTIPLIER = 2.5
 
 
 def _filter_outliers(prices: list[float]) -> list[float]:
-    """Remove prices more than 2.5 std deviations from the mean."""
+    """Two-pass outlier removal.
+
+    Pass 1 — median cap: drop anything above 10x the median. This catches
+    joke/test listings like $790,975 even with very few data points, since
+    the median itself is unaffected by a single extreme value.
+
+    Pass 2 — IQR: drop anything outside Q1-3*IQR .. Q3+3*IQR. Handles
+    subtler outliers once the extreme values are already gone.
+    """
+    if len(prices) < 2:
+        return prices
+
+    # Pass 1: median cap
+    med = statistics.median(prices)
+    if med > 0:
+        prices = [p for p in prices if p <= 10 * med]
+
+    if not prices:
+        return prices
+
+    # Pass 2: IQR
     if len(prices) < 4:
         return prices
-    mean = statistics.mean(prices)
-    stdev = statistics.stdev(prices)
-    if stdev == 0:
+    sorted_p = sorted(prices)
+    n = len(sorted_p)
+    q1 = sorted_p[n // 4]
+    q3 = sorted_p[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr == 0:
         return prices
-    return [p for p in prices if abs(p - mean) <= _OUTLIER_STD_MULTIPLIER * stdev]
+    lower = q1 - 3 * iqr
+    upper = q3 + 3 * iqr
+    filtered = [p for p in prices if lower <= p <= upper]
+    return filtered if filtered else prices
 
 
 def aggregate(listings: list[SaleListing], threshold: int) -> list[ConditionSummary]:
