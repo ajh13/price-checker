@@ -201,6 +201,64 @@
 
     #results { margin-top: 0; }
 
+    /* Summary card */
+    .summary-card { margin-bottom: 1.5rem; }
+    .summary-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .summary-title { font-size: 1rem; font-weight: 700; color: #f1f5f9; }
+    .condition-picker { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .cond-pill {
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #2d3148;
+      background: #0f1117;
+      color: #64748b;
+      transition: all 0.15s;
+    }
+    .cond-pill:hover { border-color: #475569; color: #94a3b8; }
+    .cond-pill.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .summary-table th {
+      text-align: left;
+      color: #475569;
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.3rem 0.5rem;
+      border-bottom: 1px solid #2d3148;
+    }
+    .summary-table th:last-child { text-align: right; }
+    .summary-table td {
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid #1a1f2e;
+      color: #cbd5e1;
+    }
+    .summary-table td:last-child { text-align: right; font-weight: 600; color: #f1f5f9; }
+    .summary-table td.no-data { color: #334155; font-style: italic; }
+    .summary-table tr.total-row td {
+      border-top: 1px solid #2d3148;
+      border-bottom: none;
+      padding-top: 0.6rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .summary-table tr.total-row td:last-child { font-size: 1.1rem; color: #a5b4fc; }
+
     /* Sales drawer (expand/collapse) */
     .toggle-sales-btn {
       background: none;
@@ -292,6 +350,82 @@
         rows += `<tr><td>${title}</td><td>${s.sale_date}</td><td>${fmt(s.price)}</td></tr>`;
       }
       return `<table class="recent-table"><thead><tr><th>Title</th><th>Date</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    const CONDITIONS = ['Sealed + Graded', 'Sealed', 'CIB', 'Box + Disc', 'Loose'];
+    let _summaryData = null;
+    let _activeCondition = 'Loose';
+
+    function getPriceForCondition(item, condition) {
+      const c = item.conditions.find(c => c.condition === condition);
+      if (!c) return null;
+      // Use average if available, otherwise average of recent_sales
+      if (c.average_price != null) return c.average_price;
+      if (c.recent_sales && c.recent_sales.length > 0) {
+        const sum = c.recent_sales.reduce((a, s) => a + s.price, 0);
+        return sum / c.recent_sales.length;
+      }
+      return null;
+    }
+
+    function renderSummary(results, activeCondition) {
+      // Only show summary if more than 1 item or any item has data
+      const itemsWithData = results.filter(r => !r.error && r.conditions.length > 0);
+      if (itemsWithData.length === 0) return '';
+
+      // Which conditions appear across all results?
+      const presentConditions = CONDITIONS.filter(cond =>
+        results.some(r => r.conditions.find(c => c.condition === cond))
+      );
+
+      const pills = presentConditions.map(cond => {
+        const active = cond === activeCondition ? ' active' : '';
+        return `<button class="cond-pill${active}" onclick="selectCondition('${escHtml(cond)}')">${escHtml(cond)}</button>`;
+      }).join('');
+
+      let rows = '';
+      let total = 0;
+      let totalMissing = false;
+
+      for (const item of results) {
+        if (item.error) {
+          rows += `<tr><td>${escHtml(item.query)}</td><td class="no-data" colspan="1">error</td></tr>`;
+          totalMissing = true;
+          continue;
+        }
+        const price = getPriceForCondition(item, activeCondition);
+        if (price != null) {
+          total += price;
+          rows += `<tr><td>${escHtml(item.query)}</td><td>${fmt(price)}</td></tr>`;
+        } else {
+          rows += `<tr><td>${escHtml(item.query)}</td><td class="no-data">no data</td></tr>`;
+          totalMissing = true;
+        }
+      }
+
+      const totalLabel = totalMissing ? `${fmt(total)} <span style="color:#475569;font-size:0.8rem">(partial)</span>` : fmt(total);
+
+      return `<div class="card summary-card">
+        <div class="summary-header">
+          <span class="summary-title">Total Value</span>
+          <div class="condition-picker">${pills}</div>
+        </div>
+        <table class="summary-table">
+          <thead><tr><th>Item</th><th style="text-align:right">${escHtml(activeCondition)} Avg</th></tr></thead>
+          <tbody>
+            ${rows}
+            <tr class="total-row"><td>Total</td><td>${totalLabel}</td></tr>
+          </tbody>
+        </table>
+      </div>`;
+    }
+
+    function selectCondition(condition) {
+      _activeCondition = condition;
+      if (_summaryData) {
+        const summaryEl = document.getElementById('summary');
+        if (summaryEl) summaryEl.outerHTML = `<div id="summary">${renderSummary(_summaryData, _activeCondition)}</div>`;
+      }
     }
 
     function toggleSales(btn) {
@@ -437,7 +571,10 @@
         }
 
         const data = await resp.json();
-        results.innerHTML = data.results.map(renderItem).join('');
+        _summaryData = data.results;
+        _activeCondition = 'Loose';
+        const summaryHtml = renderSummary(data.results, _activeCondition);
+        results.innerHTML = `<div id="summary">${summaryHtml}</div>` + data.results.map(renderItem).join('');
         status.textContent = `Done — ${data.results.length} result${data.results.length !== 1 ? 's' : ''} · ${new Date(data.requested_at).toLocaleTimeString()}`;
       } catch (err) {
         results.innerHTML = `<div class="error-banner">Network error: ${escHtml(err.message)}</div>`;
