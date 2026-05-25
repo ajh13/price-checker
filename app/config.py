@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     rapidapi_key: SecretStr
     rapidapi_host: str = "ebay-average-selling-price.p.rapidapi.com"
     ebay_max_results: int = 120
-    ebay_concurrency_limit: int = 1
-    ebay_rate_limit: float = 1.0  # max requests per second
+    ebay_concurrency_limit: int = 3
+    ebay_rate_limit: float = 3.0  # max requests per second
     cache_ttl_hours: float = 24.0
     cache_dir: str = ".cache"
     low_data_threshold: int = 5
