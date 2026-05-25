@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 import unicodedata
 from datetime import datetime
@@ -25,9 +26,21 @@ class RateLimiter:
             self._last_call = time.monotonic()
 
 
-def _ascii_keywords(text: str) -> str:
-    """Normalize accented characters to ASCII equivalents (é→e, ñ→n, etc.)
-    so eBay search handles them correctly."""
+def _clean_keywords(text: str) -> str:
+    """Strip inventory-style annotations before sending to eBay search.
+
+    Removes:
+    - Parenthetical notes: (CIB), (missing manual), (Player's Choice edition), etc.
+    - Price suffixes: : $55, : $140.00
+    Then normalizes accented characters to ASCII (é→e, ñ→n, etc.).
+    """
+    # Remove price suffix (colon followed by a dollar amount)
+    text = re.sub(r'\s*:\s*\$[\d.,]+', '', text)
+    # Remove parenthetical notes
+    text = re.sub(r'\s*\([^)]*\)', '', text)
+    # Collapse extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    # Normalize unicode to ASCII
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 
@@ -96,7 +109,7 @@ class EbayClient:
         }
 
         body: dict = {
-            "keywords": _ascii_keywords(keywords),
+            "keywords": _clean_keywords(keywords),
             "max_search_results": max_results_str,
             "remove_outliers": remove_outliers,
         }
