@@ -27,7 +27,8 @@ class ConditionSummary(BaseModel):
     median_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
-    recent_sales: list[SaleListing] | None = None
+    recent_sales: list[SaleListing] | None = None  # low-data fallback (< threshold)
+    sales: list[SaleListing] = []                   # all individual sales, always populated
 
 
 class ItemResult(BaseModel):

@@ -200,6 +200,33 @@
     .low-data-note { font-size: 0.75rem; color: #64748b; margin-bottom: 0.4rem; font-style: italic; }
 
     #results { margin-top: 0; }
+
+    /* Sales drawer (expand/collapse) */
+    .toggle-sales-btn {
+      background: none;
+      border: none;
+      color: #475569;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: color 0.15s;
+    }
+    .toggle-sales-btn:hover { color: #94a3b8; }
+    .toggle-sales-btn .chevron { display: inline-block; transition: transform 0.2s; }
+    .toggle-sales-btn.open .chevron { transform: rotate(90deg); }
+
+    .sales-drawer {
+      display: none;
+      margin-top: 0.6rem;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 0.6rem;
+    }
+    .sales-drawer.open { display: block; }
   </style>
 </head>
 <body>
@@ -256,21 +283,37 @@
         .replace(/"/g, '&quot;');
     }
 
+    function renderSalesTable(sales) {
+      let rows = '';
+      for (const s of sales) {
+        const title = s.url
+          ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(s.title.slice(0, 70))}${s.title.length > 70 ? '…' : ''}</a>`
+          : escHtml(s.title.slice(0, 70)) + (s.title.length > 70 ? '…' : '');
+        rows += `<tr><td>${title}</td><td>${s.sale_date}</td><td>${fmt(s.price)}</td></tr>`;
+      }
+      return `<table class="recent-table"><thead><tr><th>Title</th><th>Date</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function toggleSales(btn) {
+      btn.classList.toggle('open');
+      const drawer = btn.nextElementSibling;
+      drawer.classList.toggle('open');
+      const count = btn.dataset.count;
+      btn.querySelector('.label').textContent = drawer.classList.contains('open')
+        ? `Hide ${count} sale${count != 1 ? 's' : ''}`
+        : `Show ${count} sale${count != 1 ? 's' : ''}`;
+    }
+
     function renderCondition(c) {
       const cls = CONDITION_CLASS[c.condition] || 'loose';
       let body = '';
 
       if (c.recent_sales && c.recent_sales.length > 0) {
-        body += `<p class="low-data-note">Fewer than ${c.count < 1 ? 1 : c.count + 1} sales — showing most recent</p>`;
-        body += '<table class="recent-table"><thead><tr><th>Title</th><th>Date</th><th>Price</th></tr></thead><tbody>';
-        for (const s of c.recent_sales) {
-          const title = s.url
-            ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(s.title.slice(0, 60))}${s.title.length > 60 ? '…' : ''}</a>`
-            : escHtml(s.title.slice(0, 60)) + (s.title.length > 60 ? '…' : '');
-          body += `<tr><td>${title}</td><td>${s.sale_date}</td><td>${fmt(s.price)}</td></tr>`;
-        }
-        body += '</tbody></table>';
+        // Low-data: sales table is shown inline (no toggle needed)
+        body += `<p class="low-data-note">Only ${c.count} sale${c.count !== 1 ? 's' : ''} — showing most recent</p>`;
+        body += renderSalesTable(c.recent_sales);
       } else {
+        // Aggregated stats
         body += `<div class="stats-row">
           <div class="stat"><span class="stat-label">Avg</span><span class="stat-value avg">${fmt(c.average_price)}</span></div>
           <div class="stat"><span class="stat-label">Median</span><span class="stat-value">${fmt(c.median_price)}</span></div>
@@ -280,9 +323,22 @@
         <div class="count-note">${c.count} sold listing${c.count !== 1 ? 's' : ''}</div>`;
       }
 
+      // Expandable sales drawer — shown for all conditions that have sales data
+      const allSales = c.sales || [];
+      let drawerHtml = '';
+      if (allSales.length > 0) {
+        const label = `Show ${allSales.length} sale${allSales.length !== 1 ? 's' : ''}`;
+        drawerHtml = `
+          <button class="toggle-sales-btn" data-count="${allSales.length}" onclick="toggleSales(this)">
+            <span class="chevron">▶</span><span class="label">${label}</span>
+          </button>
+          <div class="sales-drawer">${renderSalesTable(allSales)}</div>`;
+      }
+
       return `<div class="condition-card ${cls}">
         <div class="condition-name">${escHtml(c.condition)}</div>
         ${body}
+        ${drawerHtml}
       </div>`;
     }
 

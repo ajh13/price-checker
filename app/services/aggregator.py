@@ -56,6 +56,7 @@ def aggregate(listings: list[SaleListing], threshold: int) -> list[ConditionSumm
                 min_price=round(min(prices), 2),
                 max_price=round(max(prices), 2),
                 recent_sales=None,
+                sales=group,
             ))
         else:
             results.append(ConditionSummary(
@@ -66,6 +67,7 @@ def aggregate(listings: list[SaleListing], threshold: int) -> list[ConditionSumm
                 min_price=None,
                 max_price=None,
                 recent_sales=group[:_RECENT_SALES_LIMIT],
+                sales=group,
             ))
 
     return results
