@@ -3,8 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    rapidapi_key: SecretStr
-    rapidapi_host: str = "ebay-average-selling-price.p.rapidapi.com"
+    ebay_app_id: SecretStr
     ebay_max_results: int = 120
     ebay_concurrency_limit: int = 3
     ebay_rate_limit: float = 3.0  # max requests per second
