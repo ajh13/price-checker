@@ -1,5 +1,6 @@
 import asyncio
 import time
+import unicodedata
 from datetime import datetime
 
 import httpx
@@ -22,6 +23,12 @@ class RateLimiter:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._last_call = time.monotonic()
+
+
+def _ascii_keywords(text: str) -> str:
+    """Normalize accented characters to ASCII equivalents (é→e, ñ→n, etc.)
+    so eBay search handles them correctly."""
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 
 class APIAuthError(Exception):
@@ -85,7 +92,7 @@ class EbayClient:
         }
 
         body: dict = {
-            "keywords": keywords,
+            "keywords": _ascii_keywords(keywords),
             "max_search_results": max_results_str,
             "remove_outliers": remove_outliers,
         }
