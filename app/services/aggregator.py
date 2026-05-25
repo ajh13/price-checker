@@ -9,26 +9,50 @@ _RECENT_SALES_LIMIT = 5
 
 
 def _filter_outliers(prices: list[float], reference: float | None = None) -> list[float]:
-    """Two-pass outlier removal.
+    """Three-pass outlier removal.
 
-    Pass 1 — median cap: drop anything above 10x the median. When a reference
-    price is provided AND the computed median is wildly above it (100x+), we
-    treat all individual prices as corrupted and use the reference for the cap
-    instead — this catches cases where the API returns correct top-level stats
-    but completely wrong per-product prices.
+    Pass 0 — gap detection: find the largest proportional jump between
+    consecutive sorted prices. A jump > 5x signals a bimodal distribution
+    caused by API price corruption where some (or most) individual prices are
+    inflated by 10-100x while the lower cluster is legitimate. We keep only
+    the lower cluster. This fires even when the API's own aggregate is also
+    corrupted (e.g. Chibi Robo, Wario World), because the real prices are
+    always anchored at the low end.
+
+    Pass 1 — median cap: drop anything above 10x the median. When the API
+    corrupts ALL prices uniformly (e.g. Animal Crossing returning $1.5M when
+    the true price is ~$48), the median is also corrupted but the API's own
+    reported average_price (reference) is still correct. In that case we use
+    the reference for the cap so everything gets filtered and the caller falls
+    back to the API aggregate.
 
     Pass 2 — IQR: drop anything outside Q1-3*IQR .. Q3+3*IQR. Handles
-    subtler outliers once the extreme values are already gone.
+    subtler remaining outliers.
     """
     if len(prices) < 2:
         return prices
 
-    # Pass 1: median cap
+    # Pass 0: gap detection — cuts bimodal corrupt distributions at the cluster boundary
+    sorted_all = sorted(prices)
+    max_ratio = 1.0
+    cut_idx = len(sorted_all)
+    for i in range(len(sorted_all) - 1):
+        if sorted_all[i] > 0:
+            ratio = sorted_all[i + 1] / sorted_all[i]
+            if ratio > max_ratio:
+                max_ratio = ratio
+                cut_idx = i + 1
+    # Only cut if the gap is large AND the lower cluster has real substance.
+    # min_cluster prevents cutting on a single cheap mislist at the bottom.
+    min_cluster = max(2, int(0.05 * len(sorted_all)))
+    if max_ratio > 5.0 and cut_idx >= min_cluster:
+        prices = sorted_all[:cut_idx]
+
+    if not prices:
+        return prices
+
+    # Pass 1: median cap (with API corruption fallback for all-corrupted case)
     med = statistics.median(prices)
-    # If ALL prices appear corrupted (median is 100x+ the API's own average),
-    # use the API's average as the reference so the cap catches the corruption.
-    # Do NOT use the API average in normal cases — it's an overall average across
-    # all conditions and would produce a wrong cap for per-condition filtering.
     if reference and reference > 0 and med > 100 * reference:
         cap_base = reference
     else:
