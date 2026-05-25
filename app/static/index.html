@@ -278,6 +278,37 @@
     .toggle-sales-btn .chevron { display: inline-block; transition: transform 0.2s; }
     .toggle-sales-btn.open .chevron { transform: rotate(90deg); }
 
+    /* Specified condition highlight */
+    .condition-card.specified { outline: 2px solid #6366f1; outline-offset: 2px; }
+    .your-item-badge {
+      display: inline-block;
+      background: #6366f1;
+      color: #fff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    .other-conditions-toggle {
+      background: none;
+      border: none;
+      color: #475569;
+      font-size: 0.78rem;
+      cursor: pointer;
+      padding: 0.4rem 0;
+      margin-top: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .other-conditions-toggle:hover { color: #94a3b8; }
+    .other-conditions { display: none; margin-top: 0.5rem; }
+    .other-conditions.open { display: flex; flex-direction: column; gap: 0.6rem; }
+
     .sales-drawer {
       display: none;
       margin-top: 0.6rem;
@@ -369,7 +400,17 @@
     }
 
     function bestCondition(results) {
-      // Pick the condition with the most items that have price data
+      // If most items have a specified condition, use the most common one
+      const specCounts = {};
+      for (const r of results) {
+        if (r.specified_condition) {
+          specCounts[r.specified_condition] = (specCounts[r.specified_condition] || 0) + 1;
+        }
+      }
+      if (Object.keys(specCounts).length > 0) {
+        return Object.entries(specCounts).sort((a, b) => b[1] - a[1])[0][0];
+      }
+      // Fallback: pick the condition with the most items that have price data
       let best = 'Loose';
       let bestCount = -1;
       for (const cond of CONDITIONS) {
@@ -377,6 +418,13 @@
         if (count > bestCount) { bestCount = count; best = cond; }
       }
       return best;
+    }
+
+    function getPriceForItem(item, activeCondition) {
+      // Use the item's specified condition if the active condition matches, otherwise use active
+      const condToUse = item.specified_condition || activeCondition;
+      return getPriceForCondition(item, condToUse === activeCondition ? activeCondition : condToUse)
+          ?? getPriceForCondition(item, activeCondition);
     }
 
     function renderSummary(results, activeCondition) {
@@ -404,7 +452,7 @@
           totalMissing = true;
           continue;
         }
-        const price = getPriceForCondition(item, activeCondition);
+        const price = getPriceForItem(item, activeCondition);
         if (price != null) {
           total += price;
           rows += `<tr><td>${escHtml(item.query)}</td><td>${fmt(price)}</td></tr>`;
@@ -449,8 +497,17 @@
         : `Show ${count} sale${count != 1 ? 's' : ''}`;
     }
 
-    function renderCondition(c) {
+    function toggleOtherConditions(btn) {
+      btn.classList.toggle('open');
+      const panel = btn.nextElementSibling;
+      panel.classList.toggle('open');
+      btn.textContent = panel.classList.contains('open') ? '▲ Hide other conditions' : '▼ Show other conditions';
+    }
+
+    function renderCondition(c, isSpecified = false) {
       const cls = CONDITION_CLASS[c.condition] || 'loose';
+      const specifiedCls = isSpecified ? ' specified' : '';
+      const badge = isSpecified ? '<span class="your-item-badge">your item</span>' : '';
       let body = '';
 
       if (c.recent_sales && c.recent_sales.length > 0) {
@@ -480,8 +537,8 @@
           <div class="sales-drawer">${renderSalesTable(allSales)}</div>`;
       }
 
-      return `<div class="condition-card ${cls}">
-        <div class="condition-name">${escHtml(c.condition)}</div>
+      return `<div class="condition-card ${cls}${specifiedCls}">
+        <div class="condition-name">${escHtml(c.condition)}${badge}</div>
         ${body}
         ${drawerHtml}
       </div>`;
@@ -522,8 +579,17 @@
         conditionsHtml = `<div class="item-error">${escHtml(item.error)}</div>`;
       } else if (item.conditions.length === 0) {
         conditionsHtml = `<div class="item-error">No sales data found for this item.</div>`;
+      } else if (item.specified_condition) {
+        const specified = item.conditions.filter(c => c.condition === item.specified_condition);
+        const others = item.conditions.filter(c => c.condition !== item.specified_condition);
+        const specifiedHtml = specified.map(c => renderCondition(c, true)).join('');
+        const othersHtml = others.length > 0
+          ? `<button class="other-conditions-toggle" onclick="toggleOtherConditions(this)">▼ Show other conditions</button>
+             <div class="other-conditions">${others.map(c => renderCondition(c, false)).join('')}</div>`
+          : '';
+        conditionsHtml = `<div class="conditions-grid">${specifiedHtml}${othersHtml}</div>`;
       } else {
-        conditionsHtml = `<div class="conditions-grid">${item.conditions.map(renderCondition).join('')}</div>`;
+        conditionsHtml = `<div class="conditions-grid">${item.conditions.map(c => renderCondition(c, false)).join('')}</div>`;
       }
 
       return `<div class="item-result card">

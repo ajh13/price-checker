@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class PriceRequest(BaseModel):
     items: Annotated[list[str], Field(min_length=1, max_length=20)]
-    excluded_keywords: list[str] = ["lot", "bundle", "repair", "broken", "parts", "for parts"]
+    excluded_keywords: list[str] = ["lot", "bundle", "repair", "broken", "parts", "for parts", "PAL"]
     max_results: int | None = None
     remove_outliers: bool = True
     category_id: str | None = None
@@ -35,6 +35,7 @@ class ItemResult(BaseModel):
     query: str
     conditions: list[ConditionSummary]
     total_results_fetched: int
+    specified_condition: str | None = None  # condition parsed from user's parenthetical notes
     source: str = "eBay"
     cached: bool = False
     cached_at: datetime | None = None

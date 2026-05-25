@@ -112,6 +112,7 @@ class EbayClient:
             "keywords": _clean_keywords(keywords),
             "max_search_results": max_results_str,
             "remove_outliers": remove_outliers,
+            "site_id": "0",  # US eBay only — prevents foreign currency prices being treated as USD
         }
 
         if excluded_keywords:

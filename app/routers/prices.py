@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -7,7 +8,40 @@ from app.config import Settings, get_settings
 from app.models import ItemResult, PriceRequest, PriceResponse
 from app.services.aggregator import aggregate
 from app.services.cache import Cache
+from app.services.classifier import classify_condition
 from app.services.ebay import APIAuthError, EbayClient, RateLimiter, RateLimitError, UpstreamError
+
+# Parenthetical notes that refer to edition/version, not condition — skip these
+_EDITION_PATTERN = re.compile(
+    r"player'?s?\s*choice|greatest\s*hits|black\s*label|greatest\s*hits|"
+    r"ntsc|import|japan|jpn|pal|eur|aus|uk|edition|version|series|e\+",
+    re.I,
+)
+
+
+def _parse_specified_condition(query: str) -> str | None:
+    """Extract the user-specified condition from parenthetical notes in the query.
+
+    e.g. 'Animal Crossing (missing memory card, otherwise CIB)' → 'CIB'
+         'Chibi Robo (disc only)'                               → 'Loose'
+         'Pikmin (no manual)'                                   → 'Box + Disc'
+    """
+    parens = re.findall(r'\(([^)]*)\)', query)
+    for paren in parens:
+        # Skip if it's purely a price note
+        if re.match(r'^\$[\d.,]+$', paren.strip()):
+            continue
+        # Strip edition/region phrases, keep any remaining condition info
+        cleaned = _EDITION_PATTERN.sub('', paren).strip(' ,')
+        if not cleaned:
+            continue
+        condition = classify_condition(cleaned)
+        # classify_condition defaults to Loose — only trust Loose if explicitly stated
+        if condition != "Loose":
+            return condition
+        if any(kw in paren.lower() for kw in ("loose", "disc only", "disk only", "cart only", "no box", "game only")):
+            return "Loose"
+    return None
 
 router = APIRouter()
 
@@ -80,6 +114,7 @@ async def _fetch_item(
         query=item,
         conditions=conditions,
         total_results_fetched=len(listings),
+        specified_condition=_parse_specified_condition(item),
     )
 
     # Only cache successful results with actual data
