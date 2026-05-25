@@ -29,6 +29,13 @@ def _clamp_max_results(value: int) -> str:
 def _parse_sale_date(date_str: str | None) -> "datetime.date":
     if not date_str:
         return datetime.now().date()
+    # Try eBay's human-readable format first: "May 24, 2026"
+    for fmt in ("%B %d, %Y", "%b %d, %Y"):
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            pass
+    # Fall back to ISO 8601
     try:
         return datetime.fromisoformat(date_str.replace("Z", "+00:00")).date()
     except (ValueError, AttributeError):
@@ -90,46 +97,23 @@ class EbayClient:
         except Exception as exc:
             raise UpstreamError(f"eBay API error: invalid JSON response") from exc
 
-        # The RapidAPI eBay sold items endpoint returns results under various keys.
-        # Try known candidates in order of likelihood.
-        raw_items: list = []
-        if isinstance(payload, list):
-            raw_items = payload
-        else:
-            for candidate in ("results", "data", "items", "listings"):
-                if candidate in payload and isinstance(payload[candidate], list):
-                    raw_items = payload[candidate]
-                    break
+        # Response shape: listings are under "products", aggregates at top level
+        raw_items: list = payload.get("products", []) if isinstance(payload, dict) else []
 
         listings: list[SaleListing] = []
         for item in raw_items:
             if not isinstance(item, dict):
                 continue
 
-            # Title
-            title = item.get("title") or item.get("name") or ""
+            title = item.get("title") or ""
 
-            # Price — may be nested under "price" dict or a flat float/string
-            price_raw = item.get("sale_price") or item.get("price") or item.get("soldPrice") or 0
-            if isinstance(price_raw, dict):
-                price = float(price_raw.get("value") or price_raw.get("amount") or 0)
-            else:
-                try:
-                    price = float(price_raw)
-                except (TypeError, ValueError):
-                    price = 0.0
+            try:
+                price = float(item.get("sale_price") or 0)
+            except (TypeError, ValueError):
+                price = 0.0
 
-            # Sale date
-            date_str = (
-                item.get("sold_date")
-                or item.get("sale_date")
-                or item.get("dateSold")
-                or item.get("date")
-            )
-            sale_date = _parse_sale_date(date_str)
-
-            # URL
-            url = item.get("url") or item.get("itemUrl") or item.get("link") or None
+            sale_date = _parse_sale_date(item.get("date_sold"))
+            url = item.get("link") or None
 
             listings.append(
                 SaleListing(
