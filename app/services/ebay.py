@@ -68,6 +68,10 @@ def _parse_sale_date(date_str: str | None) -> "datetime.date":
         return datetime.now().date()
 
 
+_MAX_RETRIES = 4
+_RETRY_BASE_WAIT = 1.0  # seconds to wait after first 429, doubles each retry
+
+
 class EbayClient:
     BASE_URL = "https://ebay-average-selling-price.p.rapidapi.com/findCompletedItems"
 
@@ -103,52 +107,61 @@ class EbayClient:
         if category_id is not None:
             body["category_id"] = category_id
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(self.BASE_URL, headers=headers, json=body)
-        except httpx.TimeoutException as exc:
-            raise UpstreamError(f"eBay API error: timeout") from exc
+        for attempt in range(_MAX_RETRIES):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(self.BASE_URL, headers=headers, json=body)
+            except httpx.TimeoutException as exc:
+                raise UpstreamError("eBay API error: timeout") from exc
 
-        status = response.status_code
+            status = response.status_code
 
-        if status in (401, 403):
-            raise APIAuthError("Invalid API key — check RAPIDAPI_KEY in .env")
-        if status == 429:
-            raise RateLimitError("eBay API rate limit hit")
-        if status >= 500:
-            raise UpstreamError(f"eBay API error: {status}")
+            if status in (401, 403):
+                raise APIAuthError("Invalid API key — check RAPIDAPI_KEY in .env")
 
-        try:
-            payload = response.json()
-        except Exception as exc:
-            raise UpstreamError(f"eBay API error: invalid JSON response") from exc
+            if status == 429:
+                if attempt < _MAX_RETRIES - 1:
+                    wait = _RETRY_BASE_WAIT * (2 ** attempt)  # 1s, 2s, 4s
+                    await asyncio.sleep(wait)
+                    continue
+                raise RateLimitError("eBay API rate limit hit after retries")
 
-        # Response shape: listings are under "products", aggregates at top level
-        raw_items: list = payload.get("products", []) if isinstance(payload, dict) else []
-
-        listings: list[SaleListing] = []
-        for item in raw_items:
-            if not isinstance(item, dict):
-                continue
-
-            title = item.get("title") or ""
+            if status >= 500:
+                raise UpstreamError(f"eBay API error: {status}")
 
             try:
-                price = float(item.get("sale_price") or 0)
-            except (TypeError, ValueError):
-                price = 0.0
+                payload = response.json()
+            except Exception as exc:
+                raise UpstreamError("eBay API error: invalid JSON response") from exc
 
-            sale_date = _parse_sale_date(item.get("date_sold"))
-            url = item.get("link") or None
+            # Response shape: listings are under "products", aggregates at top level
+            raw_items: list = payload.get("products", []) if isinstance(payload, dict) else []
 
-            listings.append(
-                SaleListing(
-                    title=title,
-                    price=price,
-                    sale_date=sale_date,
-                    url=url,
-                    source="eBay",
+            listings: list[SaleListing] = []
+            for item in raw_items:
+                if not isinstance(item, dict):
+                    continue
+
+                title = item.get("title") or ""
+
+                try:
+                    price = float(item.get("sale_price") or 0)
+                except (TypeError, ValueError):
+                    price = 0.0
+
+                sale_date = _parse_sale_date(item.get("date_sold"))
+                url = item.get("link") or None
+
+                listings.append(
+                    SaleListing(
+                        title=title,
+                        price=price,
+                        sale_date=sale_date,
+                        url=url,
+                        source="eBay",
+                    )
                 )
-            )
 
-        return listings
+            return listings
+
+        raise UpstreamError("eBay API failed after all retries")
