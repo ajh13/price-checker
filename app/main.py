@@ -21,7 +21,7 @@ app.include_router(prices.router, prefix="/api")
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "cache_dir": settings.cache_dir, "cache_ttl_hours": settings.cache_ttl_hours}
 
 
 # Serve the frontend. Must come after API routes.
