@@ -2,11 +2,19 @@ import asyncio
 import re
 import time
 import unicodedata
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
 
 from app.models import SaleListing
+
+
+@dataclass
+class FetchResult:
+    listings: list[SaleListing] = field(default_factory=list)
+    api_average_price: float | None = None
+    api_median_price: float | None = None
 
 
 class RateLimiter:
@@ -98,7 +106,7 @@ class EbayClient:
         max_results: int | None = None,
         remove_outliers: bool = True,
         category_id: str | None = None,
-    ) -> list[SaleListing]:
+    ) -> FetchResult:
         effective_max = max_results if max_results is not None else self._settings.ebay_max_results
         max_results_str = _clamp_max_results(effective_max)
 
@@ -151,6 +159,24 @@ class EbayClient:
             # Response shape: listings are under "products", aggregates at top level
             raw_items: list = payload.get("products", []) if isinstance(payload, dict) else []
 
+            # Capture API's own aggregate stats — these remain correct even when
+            # individual product prices are corrupted (known API data quality issue)
+            api_avg: float | None = None
+            api_median: float | None = None
+            if isinstance(payload, dict):
+                try:
+                    v = float(payload.get("average_price") or 0)
+                    if v > 0:
+                        api_avg = v
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    v = float(payload.get("median_price") or 0)
+                    if v > 0:
+                        api_median = v
+                except (TypeError, ValueError):
+                    pass
+
             listings: list[SaleListing] = []
             for item in raw_items:
                 if not isinstance(item, dict):
@@ -176,6 +202,6 @@ class EbayClient:
                     )
                 )
 
-            return listings
+            return FetchResult(listings=listings, api_average_price=api_avg, api_median_price=api_median)
 
-        raise UpstreamError("eBay API failed after all retries")
+        raise UpstreamError("eBay API failed after all retries")  # pragma: no cover

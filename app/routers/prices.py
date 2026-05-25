@@ -93,7 +93,7 @@ async def _fetch_item(
     # Cache miss — acquire rate limiter slot then call eBay API
     await rate_limiter.acquire()
     try:
-        listings = await ebay_client.fetch_listings(
+        fetch_result = await ebay_client.fetch_listings(
             keywords=item,
             excluded_keywords=excluded,
             max_results=request.max_results,
@@ -109,7 +109,13 @@ async def _fetch_item(
     except Exception as e:
         return ItemResult(query=item, conditions=[], total_results_fetched=0, error=f"Unexpected error: {e}")
 
-    conditions = aggregate(listings, settings.low_data_threshold)
+    listings = fetch_result.listings
+    conditions = aggregate(
+        listings,
+        settings.low_data_threshold,
+        api_average_price=fetch_result.api_average_price,
+        api_median_price=fetch_result.api_median_price,
+    )
     result = ItemResult(
         query=item,
         conditions=conditions,

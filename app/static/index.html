@@ -198,6 +198,7 @@
     .recent-table a { color: #818cf8; text-decoration: none; }
     .recent-table a:hover { text-decoration: underline; }
     .low-data-note { font-size: 0.75rem; color: #64748b; margin-bottom: 0.4rem; font-style: italic; }
+    .data-quality-note { font-size: 0.7rem; color: #f59e0b; margin-top: 0.4rem; font-style: italic; }
 
     #results { margin-top: 0; }
 
@@ -523,6 +524,9 @@
           <div class="stat"><span class="stat-label">High</span><span class="stat-value">${fmt(c.max_price)}</span></div>
         </div>
         <div class="count-note">${c.count} sold listing${c.count !== 1 ? 's' : ''}</div>`;
+        if (c.data_note) {
+          body += `<p class="data-quality-note">⚠ ${escHtml(c.data_note)}</p>`;
+        }
       }
 
       // Expandable sales drawer — shown for all conditions that have sales data

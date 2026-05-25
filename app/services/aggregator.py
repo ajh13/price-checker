@@ -8,12 +8,14 @@ from app.services.classifier import CONDITION_ORDER, classify_condition
 _RECENT_SALES_LIMIT = 5
 
 
-def _filter_outliers(prices: list[float]) -> list[float]:
+def _filter_outliers(prices: list[float], reference: float | None = None) -> list[float]:
     """Two-pass outlier removal.
 
-    Pass 1 — median cap: drop anything above 10x the median. This catches
-    joke/test listings like $790,975 even with very few data points, since
-    the median itself is unaffected by a single extreme value.
+    Pass 1 — median cap: drop anything above 10x the reference price. When a
+    trusted reference is provided (the API's own reported average_price), use
+    that instead of computing the median from possibly-corrupted individual
+    prices. This fixes cases where the API returns correct aggregate stats but
+    corrupted per-product prices (all in the millions).
 
     Pass 2 — IQR: drop anything outside Q1-3*IQR .. Q3+3*IQR. Handles
     subtler outliers once the extreme values are already gone.
@@ -21,10 +23,14 @@ def _filter_outliers(prices: list[float]) -> list[float]:
     if len(prices) < 2:
         return prices
 
-    # Pass 1: median cap
-    med = statistics.median(prices)
-    if med > 0:
-        prices = [p for p in prices if p <= 10 * med]
+    # Pass 1: cap using trusted reference if available, else compute median
+    if reference and reference > 0:
+        cap_base = reference
+    else:
+        cap_base = statistics.median(prices)
+
+    if cap_base > 0:
+        prices = [p for p in prices if p <= 10 * cap_base]
 
     if not prices:
         return prices
@@ -45,12 +51,22 @@ def _filter_outliers(prices: list[float]) -> list[float]:
     return filtered if filtered else prices
 
 
-def aggregate(listings: list[SaleListing], threshold: int) -> list[ConditionSummary]:
+def aggregate(
+    listings: list[SaleListing],
+    threshold: int,
+    api_average_price: float | None = None,
+    api_median_price: float | None = None,
+) -> list[ConditionSummary]:
     """Group listings by condition and compute per-condition price summaries.
 
     For conditions with >= threshold sales: returns avg/median/min/max.
     For conditions with < threshold sales: returns the most recent individual
     sales so the user can judge recency and trend themselves.
+
+    When api_average_price is provided it is used as the reference for the
+    outlier cap (Pass 1). If all individual prices are corrupted and get
+    filtered out, we fall back to the API's reported aggregate values so the
+    user still sees a useful price rather than nothing.
     """
     groups: dict[str, list[SaleListing]] = defaultdict(list)
     for listing in listings:
@@ -68,9 +84,27 @@ def aggregate(listings: list[SaleListing], threshold: int) -> list[ConditionSumm
 
         if count >= threshold:
             raw_prices = [l.price for l in group]
-            prices = _filter_outliers(raw_prices)
+            prices = _filter_outliers(raw_prices, reference=api_average_price)
+
+            if not prices and api_average_price:
+                # All individual prices were corrupted (known API data quality issue).
+                # Fall back to the API's own reported aggregate — it is computed
+                # server-side from the real data before corruption occurs.
+                results.append(ConditionSummary(
+                    condition=condition,
+                    count=count,
+                    average_price=round(api_average_price, 2),
+                    median_price=round(api_median_price, 2) if api_median_price else round(api_average_price, 2),
+                    min_price=None,
+                    max_price=None,
+                    recent_sales=None,
+                    sales=[],
+                    data_note="Individual sale prices appear corrupted in the API response; showing API-reported aggregate.",
+                ))
+                continue
+
             if not prices:
-                prices = raw_prices  # fallback if outlier filter removes everything
+                prices = raw_prices  # last resort: show unfiltered rather than nothing
 
             results.append(ConditionSummary(
                 condition=condition,

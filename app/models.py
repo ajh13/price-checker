@@ -29,6 +29,7 @@ class ConditionSummary(BaseModel):
     max_price: float | None = None
     recent_sales: list[SaleListing] | None = None  # low-data fallback (< threshold)
     sales: list[SaleListing] = []                   # all individual sales, always populated
+    data_note: str | None = None                    # warning when API data quality issue detected
 
 
 class ItemResult(BaseModel):
