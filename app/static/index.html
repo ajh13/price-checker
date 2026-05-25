@@ -368,6 +368,17 @@
       return null;
     }
 
+    function bestCondition(results) {
+      // Pick the condition with the most items that have price data
+      let best = 'Loose';
+      let bestCount = -1;
+      for (const cond of CONDITIONS) {
+        const count = results.filter(r => getPriceForCondition(r, cond) != null).length;
+        if (count > bestCount) { bestCount = count; best = cond; }
+      }
+      return best;
+    }
+
     function renderSummary(results, activeCondition) {
       // Only show summary if more than 1 item or any item has data
       const itemsWithData = results.filter(r => !r.error && r.conditions.length > 0);
@@ -572,7 +583,7 @@
 
         const data = await resp.json();
         _summaryData = data.results;
-        _activeCondition = 'Loose';
+        _activeCondition = bestCondition(data.results);
         const summaryHtml = renderSummary(data.results, _activeCondition);
         results.innerHTML = `<div id="summary">${summaryHtml}</div>` + data.results.map(renderItem).join('');
         status.textContent = `Done — ${data.results.length} result${data.results.length !== 1 ? 's' : ''} · ${new Date(data.requested_at).toLocaleTimeString()}`;
